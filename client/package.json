@@ -1,5 +1,6 @@
 {
   "name": "client",
+  "description": "Lumen Ledger support chat web client",
   "private": true,
   "version": "0.0.0",
   "type": "module",

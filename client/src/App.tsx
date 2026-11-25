@@ -6,7 +6,6 @@ import { Toaster } from "@/components/ui/sonner";
 import { Chat } from "@/pages/Chat";
 import { Login } from "@/pages/Login";
 import { Signup } from "@/pages/Signup";
-import { DesignPage } from "@/pages/DesignPage";
 
 function Gate({ children, mode }: { children: ReactNode; mode: "user" | "guest" }) {
   const { user, loading } = useAuth();
@@ -48,7 +47,6 @@ export default function App() {
               <Route path="/" element={null} />
               <Route path="/c/:conversationId" element={null} />
             </Route>
-            {import.meta.env.DEV ? <Route path="/dev/design" element={<DesignPage />} /> : null}
           </Routes>
         </AuthProvider>
       </BrowserRouter>

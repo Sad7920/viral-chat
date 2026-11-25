@@ -255,11 +255,13 @@ Pure helper functions live in `src/lib/lists.ts` (`upsertById`, `swapId`, `prepe
 
 ## 12. Docker and Colima
 
-One root `Dockerfile` with stages in this order: `dev-client`, `dev-server`, `build-client`, `prod`. `prod` must be last so Railway's default build picks it. Use Debian slim Node images, not Alpine (bcrypt and mongodb-memory-server need glibc). `prod` runs as a non-root user and installs with `npm ci --omit=dev`.
+One root `Dockerfile` with stages in this order: `dev-client`, `dev-server`, `build-client`, `prod`. `prod` stays last, runs as a non-root user, and installs with `npm ci --omit=dev`. Use Debian slim Node images, not Alpine (bcrypt and mongodb-memory-server need glibc). The published image is built for `linux/amd64` and pushed to GHCR. Railway pulls that image. It does not build this Dockerfile.
 
 Compose services: `client` (Vite, 5173), `server` (4000), `mongo` (27017, named volume, healthcheck). `server` depends on `mongo` with `service_healthy`. Anonymous volumes over `/app/client/node_modules` and `/app/server/node_modules` so a Mac bind mount doesn't clobber Linux modules. Vite uses `server.host: true` and `server.watch.usePolling: true`. No host network mode.
 
 `env_file`: `server/.env.example` first, then `server/.env` with `required: false` (Compose v2.24 or newer), so a local `.env` pointing at Atlas overrides the example.
+
+Atlas is the database for local development and for production. `server/.env` sets `MONGODB_URI` to the Atlas dev cluster. The Compose `mongo` service remains so `docker compose up` still runs from `server/.env.example` alone.
 
 Prod: Express serves `client/dist` with an SPA fallback that never answers /auth, /chat, /persona or /models; unknown paths there get the JSON 404.
 
@@ -281,7 +283,10 @@ Client (Vitest, pure functions only, no DOM): the SSE parser and `lists.ts`.
 - Prettier config at the repo root (`semi`, double quotes, `trailingComma: "all"`, `printWidth: 100`). ESLint flat config in each package with `eslint-config-prettier`.
 - Scripts in both packages: `lint`, `format`, `format:check`. Client also `typecheck` (`tsc -b`) and `test` (`vitest run`). Server has `test` (`node --test`).
 - `.nvmrc` at the repo root holds the Node major. The Dockerfile and CI use the same major.
-- `.github/workflows/ci.yml`: runs on pull requests and pushes to `main`, `permissions: contents: read`, concurrency cancels superseded runs. Jobs: server (lint, format check, test, with the mongodb-memory-server binary cached), client (lint, typecheck, format check, test, build), docker (build the `prod` target, no push). Pin official actions to their current major versions.
+- `.github/workflows/ci.yml` runs on pull requests and on pushes to `master`. Workflow permissions are `contents: read`. Concurrency cancels a superseded pull request run. A master run does not cancel an in-progress publish or deploy.
+- Every run has three check jobs: server (lint, format check, test, with the mongodb-memory-server binary cached), client (lint, typecheck, format check, test, build), docker (build the `prod` target, no push).
+- A push to `master`, after those three pass, runs `publish` then `deploy`. `publish` logs in to ghcr.io with `GITHUB_TOKEN`, builds the `prod` target for `linux/amd64`, and pushes `ghcr.io/<owner>/<repo>:latest` and `:sha-<short>`. The image name is lowercased. The label `org.opencontainers.image.source` is this repository. `deploy` runs `railway redeploy` with the project token. If `RAILWAY_TOKEN` is unset, that job logs a notice and succeeds. Nothing is pushed to GHCR on a pull request.
+- Official actions are pinned to their current major versions. The Railway CLI is pinned to 5.4.2, the release that accepts a project token in CI after 5.3.0 rejected it.
 
 ## 15. Seed script (development only)
 
@@ -289,9 +294,15 @@ Client (Vitest, pure functions only, no DOM): the SSE parser and `lists.ts`.
 
 ## 16. Deployment
 
-Railway: one web service built from the Dockerfile (the `prod` stage is last). Environment: MONGODB_URI, JWT_SECRET, OPENROUTER_API_KEY, OPENROUTER_MODEL, CLIENT_ORIGIN (the public Railway URL), NODE_ENV=production. Atlas prod network access must allow Railway; Hobby egress IPs aren't stable, so the practical rule is 0.0.0.0/0 on that project only, with a database user scoped to this one database and a strong password. Atlas dev can stay limited to my IP. SSE stays unbuffered because the response isn't behind a second proxy and compression is off. In production `trust proxy` is set to 1 (needed for correct per-IP rate limiting).
+Production is one Railway web service pulling the public image `ghcr.io/<owner>/<repo>:latest`. GitHub Actions builds that image on every push to `master` and then runs `railway redeploy`. Railway does not build the Dockerfile. Railway Auto Updates stay off, so a cached registry watch cannot start a second deploy. `RAILWAY_TOKEN` is a repository secret (a project token). `RAILWAY_SERVICE_ID` is a repository variable. Roll back by pointing the service image at an older `sha-<short>` tag.
 
-README sections: what it is, stack, offline Compose setup, Atlas dev override, Colima notes, env variables, how to swap the persona or domain (edit `server/src/persona.js`, restart, reload; model ids live in `server/src/allowlist.js`), seed script, API list with the SSE event format, tests and CI, the manual persona checklist, design decisions for the interview, Railway and Atlas prod steps.
+Railway variable names: MONGODB_URI, JWT_SECRET, OPENROUTER_API_KEY, OPENROUTER_MODEL, CLIENT_ORIGIN (the public Railway URL), NODE_ENV=production.
+
+Atlas is the database everywhere. Local development uses the Atlas dev cluster. Production uses a separate Atlas project. Hobby egress IPs aren't stable, so that project's network access is 0.0.0.0/0, with a database user scoped to this one database and a strong password. Atlas dev stays limited to the developer IP.
+
+SSE stays unbuffered because the response isn't behind a second proxy and compression is off. In production `trust proxy` is set to 1 (needed for correct per-IP rate limiting). The rate limiter is in-memory and per instance.
+
+README.md is the reviewer-facing guide: live demo, features, stack, architecture, local Atlas and Compose setup, environment, seed, persona swap, API and SSE, tests, CI/CD, deployment, the manual persona checklist, design decisions, and troubleshooting.
 
 ## 17. Risks
 

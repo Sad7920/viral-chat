@@ -1,5 +1,6 @@
 {
   "name": "server",
+  "description": "Lumen Ledger support chat API",
   "private": true,
   "type": "module",
   "engines": {

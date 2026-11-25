@@ -21,7 +21,7 @@ RUN npm ci
 COPY client/ ./
 RUN npm run build
 
-# prod is last so Railway's default build selects it.
+# Production image. Stays last and runs as non-root. CI publishes this target.
 FROM node:26-bookworm-slim AS prod
 WORKDIR /app/server
 COPY server/package.json server/package-lock.json ./
