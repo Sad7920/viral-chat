@@ -27,10 +27,10 @@ function publicUser(user) {
   return { id: user.id, email: user.email };
 }
 
-export function authRouter(env) {
+export function authRouter(env, authLimiter) {
   const router = Router();
 
-  router.post("/signup", async (req, res, next) => {
+  router.post("/signup", authLimiter, async (req, res, next) => {
     const parsed = credentials.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: validationError(parsed) });
@@ -50,7 +50,7 @@ export function authRouter(env) {
     }
   });
 
-  router.post("/login", async (req, res, next) => {
+  router.post("/login", authLimiter, async (req, res, next) => {
     const parsed = credentials.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: validationError(parsed) });

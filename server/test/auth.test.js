@@ -16,7 +16,8 @@ function nextEmail() {
 
 test.before(
   async () => {
-    ctx = await startApp();
+    // This file shares one address and makes more than the default 20 auth calls.
+    ctx = await startApp({ limits: { auth: { limit: 100 } } });
   },
   { timeout: 180_000 },
 );

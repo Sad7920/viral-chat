@@ -345,7 +345,7 @@ function pageBody(page, hasMore, last, timeField) {
   };
 }
 
-export function chatRouter(env, openrouter) {
+export function chatRouter(env, openrouter, chatLimiter) {
   const router = Router();
   router.use(requireAuth(env));
 
@@ -445,7 +445,7 @@ export function chatRouter(env, openrouter) {
     }
   });
 
-  router.post("/send", async (req, res, next) => {
+  router.post("/send", chatLimiter, async (req, res, next) => {
     try {
       await postSend(req, res, env, openrouter);
     } catch (err) {
@@ -458,7 +458,7 @@ export function chatRouter(env, openrouter) {
     }
   });
 
-  router.post("/conversations/:id/retry", async (req, res, next) => {
+  router.post("/conversations/:id/retry", chatLimiter, async (req, res, next) => {
     try {
       await postRetry(req, res, env, openrouter);
     } catch (err) {

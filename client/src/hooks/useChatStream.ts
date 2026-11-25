@@ -21,8 +21,8 @@ type Handlers = {
   conversationIds: () => readonly string[];
 };
 
-function noticeFor(message: string): StreamNotice {
-  if (message === RATE_LIMIT_MESSAGE) return { tone: "warning", message };
+function noticeFor(message: string, status = 0): StreamNotice {
+  if (status === 429 || message === RATE_LIMIT_MESSAGE) return { tone: "warning", message };
   return { tone: "error", message };
 }
 
@@ -218,7 +218,7 @@ export function useChatStream(handlers: Handlers) {
           const status = err instanceof ApiError ? err.status : 0;
           dropAssistant(Boolean(userId) && (status === 400 || status === 401 || status === 404));
           const message = err instanceof ApiError ? err.message : "Something went wrong";
-          setNotice(noticeFor(message));
+          setNotice(noticeFor(message, status));
           if ((status === 429 || status === 502) && !active.id) {
             void adoptCreated(gen);
           }

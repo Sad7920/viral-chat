@@ -16,8 +16,8 @@ async function closeServer(server) {
   await closed;
 }
 
-export async function listen(env, { openrouter } = {}) {
-  const app = createApp({ env, openrouter });
+export async function listen(env, { openrouter, limits } = {}) {
+  const app = createApp({ env, openrouter, limits });
   const server = createServer(app);
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -46,13 +46,13 @@ export function testEnv(overrides = {}) {
   };
 }
 
-export async function startApp({ openrouter } = {}) {
+export async function startApp({ openrouter, limits } = {}) {
   const mongo = await MongoMemoryServer.create();
   const uri = mongo.getUri();
   await mongoose.connect(uri);
   await Promise.all([User.init(), Conversation.init(), Message.init()]);
   const env = testEnv({ MONGODB_URI: uri });
-  const server = await listen(env, { openrouter });
+  const server = await listen(env, { openrouter, limits });
   return {
     env,
     url: server.url,

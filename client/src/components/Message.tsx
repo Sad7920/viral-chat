@@ -34,16 +34,19 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-function TypingDots() {
+function TypingDots({ name }: { name: string }) {
   return (
-    <span className="mt-2 inline-flex items-center gap-1">
-      <span className="sr-only">Typing</span>
+    <span
+      className="mt-2 inline-flex items-center gap-1"
+      role="status"
+      aria-label={`${name} is typing`}
+    >
       {[0, 1, 2].map((dot) => (
         <span
           key={dot}
           aria-hidden
-          className="typing-dot size-1.5 rounded-full bg-muted-foreground"
-          style={{ animationDelay: `${dot * 160}ms` }}
+          className="size-1.5 animate-pulse rounded-full bg-subtle motion-reduce:animate-none"
+          style={{ animationDelay: `${dot * 200}ms` }}
         />
       ))}
     </span>
@@ -137,7 +140,7 @@ export function AssistantMessage({
     <article className="min-w-0 text-base leading-relaxed">
       <p className="text-sm text-muted-foreground">{name}</p>
       {content ? <AssistantBody content={content} /> : null}
-      {pending && !content ? <TypingDots /> : null}
+      {pending && !content ? <TypingDots name={name} /> : null}
       {action ? <div className="mt-2 flex flex-wrap items-center gap-2">{action}</div> : null}
     </article>
   );

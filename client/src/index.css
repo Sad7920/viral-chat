@@ -167,27 +167,3 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
-
-@keyframes typing-dot {
-  0%,
-  80%,
-  100% {
-    opacity: 0.3;
-    transform: translateY(0);
-  }
-  40% {
-    opacity: 1;
-    transform: translateY(-3px);
-  }
-}
-
-.typing-dot {
-  animation: typing-dot 1.2s ease-in-out infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .typing-dot {
-    animation: none;
-    opacity: 0.6;
-  }
-}
