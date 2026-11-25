@@ -7,11 +7,11 @@ import {
   type ConversationSummary,
   type Page,
 } from "@/api";
-import { swapId } from "@/lib/lists";
+import { prependOlder, swapId } from "@/lib/lists";
 
 const RATE_LIMIT_MESSAGE = "The model is rate limited right now. Try again shortly.";
 
-export type StreamNotice = { tone: "error" | "warning"; message: string };
+export type StreamNotice = { tone: "error" | "warning" | "stopped"; message: string };
 
 type Handlers = {
   model: string;
@@ -86,6 +86,10 @@ export function useChatStream(handlers: Handlers) {
     setNotice(null);
   }, []);
 
+  const prependMessages = useCallback((older: readonly ChatMessage[]) => {
+    setMessages((prev) => prependOlder(prev, older));
+  }, []);
+
   const detach = useCallback(() => {
     generation.current += 1;
     streamingRef.current = false;
@@ -123,6 +127,7 @@ export function useChatStream(handlers: Handlers) {
       const gen = generation.current;
       const controller = new AbortController();
       abortRef.current = controller;
+      let gotText = false;
 
       function dropAssistant(dropUser: boolean) {
         setMessages((prev) =>
@@ -171,6 +176,7 @@ export function useChatStream(handlers: Handlers) {
             if (frame.event === "token") {
               const delta = textOf(data, "text");
               if (!delta) return;
+              gotText = true;
               setMessages((prev) =>
                 prev.map((item) =>
                   item.id === assistantId ? { ...item, content: item.content + delta } : item,
@@ -205,6 +211,7 @@ export function useChatStream(handlers: Handlers) {
           if (!mounted.current || generation.current !== gen) return;
           if (isAbort(err)) {
             keepPartial();
+            if (!gotText) setNotice({ tone: "stopped", message: "Stopped before a reply" });
             handlersRef.current.refreshHistory();
             return;
           }
@@ -279,5 +286,15 @@ export function useChatStream(handlers: Handlers) {
     [run],
   );
 
-  return { messages, streaming, notice, send, stop, detach, replaceMessages, retry };
+  return {
+    messages,
+    streaming,
+    notice,
+    send,
+    stop,
+    detach,
+    replaceMessages,
+    prependMessages,
+    retry,
+  };
 }

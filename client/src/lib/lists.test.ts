@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { swapId, upsertById } from "./lists";
+import { prependOlder, swapId, upsertById } from "./lists";
 
 describe("upsertById", () => {
   it("prepends an unknown id without mutating the input", () => {
@@ -42,6 +42,46 @@ describe("swapId", () => {
   it("returns a copy when the id is absent", () => {
     const items = [{ id: "a", n: 1 }];
     const next = swapId(items, "missing", "x");
+    expect(next).toEqual(items);
+    expect(next).not.toBe(items);
+  });
+});
+
+describe("prependOlder", () => {
+  it("keeps the older page ahead of the loaded rows", () => {
+    const items = [{ id: "c" }, { id: "d" }];
+    const older = [{ id: "a" }, { id: "b" }];
+    expect(prependOlder(items, older)).toEqual([
+      { id: "a" },
+      { id: "b" },
+      { id: "c" },
+      { id: "d" },
+    ]);
+    expect(items).toEqual([{ id: "c" }, { id: "d" }]);
+    expect(older).toEqual([{ id: "a" }, { id: "b" }]);
+  });
+
+  it("drops ids that are already loaded", () => {
+    const items = [
+      { id: "b", n: 1 },
+      { id: "c", n: 2 },
+    ];
+    expect(
+      prependOlder(items, [
+        { id: "a", n: 0 },
+        { id: "b", n: 9 },
+        { id: "a", n: 8 },
+      ]),
+    ).toEqual([
+      { id: "a", n: 0 },
+      { id: "b", n: 1 },
+      { id: "c", n: 2 },
+    ]);
+  });
+
+  it("returns a copy when the page is empty", () => {
+    const items = [{ id: "a" }];
+    const next = prependOlder(items, []);
     expect(next).toEqual(items);
     expect(next).not.toBe(items);
   });

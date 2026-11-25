@@ -109,25 +109,36 @@ export function AssistantMessage({
   incomplete = false,
   pending = false,
   showCopy = true,
+  onRetry,
 }: {
   name: string;
   content: string;
   incomplete?: boolean;
   pending?: boolean;
   showCopy?: boolean;
+  onRetry?: () => void;
 }) {
-  const action = pending ? null : incomplete ? (
-    <StatusBadge tone="warning">Incomplete</StatusBadge>
-  ) : showCopy && content ? (
-    <CopyButton text={content} />
+  const copy = !incomplete && showCopy && content ? <CopyButton text={content} /> : null;
+  const retry = onRetry ? (
+    <Button type="button" variant="secondary" size="sm" onClick={onRetry}>
+      Retry
+    </Button>
   ) : null;
+  const action =
+    pending || (!incomplete && !copy && !retry) ? null : (
+      <>
+        {incomplete ? <StatusBadge tone="warning">Incomplete</StatusBadge> : null}
+        {retry}
+        {copy}
+      </>
+    );
 
   return (
     <article className="min-w-0 text-base leading-relaxed">
       <p className="text-sm text-muted-foreground">{name}</p>
       {content ? <AssistantBody content={content} /> : null}
       {pending && !content ? <TypingDots /> : null}
-      {action ? <div className="mt-2">{action}</div> : null}
+      {action ? <div className="mt-2 flex flex-wrap items-center gap-2">{action}</div> : null}
     </article>
   );
 }

@@ -13,7 +13,10 @@ import {
   type Persona,
 } from "@/api";
 import { Composer } from "@/components/Composer";
+import { DeleteDialog } from "@/components/DeleteDialog";
+import { EscalateDialog } from "@/components/EscalateDialog";
 import { Sidebar } from "@/components/Sidebar";
+import { StatusBadge } from "@/components/StatusBadge";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Thread } from "@/components/Thread";
 import { Button } from "@/components/ui/button";
@@ -63,7 +66,13 @@ function failure(err: unknown) {
   return err instanceof ApiError ? err.message : "Something went wrong";
 }
 
-async function loadHistoryThrough(id: string) {
+type HistoryWalk = {
+  items: ConversationSummary[];
+  nextCursor: string | null;
+  hasMore: boolean;
+};
+
+async function loadHistoryThrough(id: string): Promise<HistoryWalk | null> {
   const found: ConversationSummary[] = [];
   let cursor: string | null = null;
   const seen = new Set<string>();
@@ -73,8 +82,10 @@ async function loadHistoryThrough(id: string) {
       : "/chat/history?limit=20";
     const page: Page<ConversationSummary> = await api(query);
     found.push(...page.items);
-    if (page.items.some((item) => item.id === id)) return found;
-    if (!page.hasMore || !page.nextCursor || seen.has(page.nextCursor)) return null;
+    const hit = page.items.some((item) => item.id === id);
+    if (hit || !page.hasMore || !page.nextCursor || seen.has(page.nextCursor)) {
+      return hit ? { items: found, nextCursor: page.nextCursor, hasMore: page.hasMore } : null;
+    }
     seen.add(page.nextCursor);
     cursor = page.nextCursor;
   }
@@ -91,13 +102,32 @@ export function Chat() {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [historyError, setHistoryError] = useState("");
+  const [historyHasMore, setHistoryHasMore] = useState(false);
+  const [historyMoreLoading, setHistoryMoreLoading] = useState(false);
+  const [historyMoreError, setHistoryMoreError] = useState("");
   const [messagesLoading, setMessagesLoading] = useState(Boolean(selectedId));
+  const [messageHasMore, setMessageHasMore] = useState(false);
+  const [olderError, setOlderError] = useState("");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadNonce, setLoadNonce] = useState(0);
   const [logoutError, setLogoutError] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [escalateOpen, setEscalateOpen] = useState(false);
+  const deleteReturn = useRef<HTMLButtonElement | null>(null);
+  const escalateReturn = useRef<HTMLButtonElement | null>(null);
   const request = useRef(0);
   const createdId = useRef<string | null>(null);
+  const historyPaging = useRef({ cursor: null as string | null, hasMore: false, depth: 0 });
+  const historyLock = useRef(false);
+  const messagePage = useRef({
+    token: 0,
+    id: null as string | null,
+    cursor: null as string | null,
+    hasMore: false,
+  });
+  const olderLock = useRef(0);
   const conversationIds = useCallback(() => conversations.map((item) => item.id), [conversations]);
 
   const onMeta = useCallback(
@@ -137,7 +167,14 @@ export function Chat() {
     [modelId, onMeta, onTitle, refreshHistory, conversationIds],
   );
   const stream = useChatStream(handlers);
-  const { detach, replaceMessages } = stream;
+  const { detach, replaceMessages, prependMessages } = stream;
+  const active = conversations.find((item) => item.id === selectedId) ?? null;
+  const escalated = Boolean(active?.escalation);
+  const lastMessage = stream.messages.at(-1);
+  const canRetry =
+    !stream.streaming &&
+    Boolean(selectedId) &&
+    (stream.notice !== null || (lastMessage?.role === "assistant" && lastMessage.incomplete));
 
   useEffect(() => {
     if (persona) document.title = persona.companyName;
@@ -158,6 +195,14 @@ export function Chat() {
         setConversations((prev) =>
           prev.length === 0 ? history.items : mergeHistory(prev, history.items),
         );
+        if (historyPaging.current.depth <= history.items.length) {
+          historyPaging.current = {
+            cursor: history.nextCursor,
+            hasMore: history.hasMore,
+            depth: Math.max(historyPaging.current.depth, history.items.length),
+          };
+          setHistoryHasMore(history.hasMore);
+        }
       })
       .catch((err: unknown) => {
         if (!cancelled) setHistoryError(failure(err));
@@ -174,12 +219,21 @@ export function Chat() {
     if (!selectedId) return;
     let cancelled = false;
     void loadHistoryThrough(selectedId)
-      .then((items) => {
-        if (cancelled || !items) return;
+      .then((walk) => {
+        if (cancelled || !walk) return;
+        if (walk.items.length > historyPaging.current.depth) {
+          historyPaging.current = {
+            cursor: walk.nextCursor,
+            hasMore: walk.hasMore,
+            depth: walk.items.length,
+          };
+          setHistoryHasMore(walk.hasMore);
+        }
         setConversations((prev) => {
           if (prev.some((item) => item.id === selectedId)) return prev;
           const known = new Set(prev.map((item) => item.id));
-          return [...prev, ...items.filter((item) => !known.has(item.id))];
+          const extra = walk.items.filter((item) => !known.has(item.id));
+          return extra.length === 0 ? prev : [...prev, ...extra];
         });
       })
       .catch(() => undefined);
@@ -193,11 +247,15 @@ export function Chat() {
     createdId.current = null;
     const token = ++request.current;
     const id = selectedId;
+    olderLock.current = 0;
+    messagePage.current = { token, id, cursor: null, hasMore: false };
     detach();
     // Follow the URL, including Back and Forward, without painting the previous thread.
     queueMicrotask(() => {
       if (request.current !== token) return;
       setLoadError(null);
+      setOlderError("");
+      setMessageHasMore(false);
       if (!id) {
         setMessagesLoading(false);
         replaceMessages([]);
@@ -208,6 +266,13 @@ export function Chat() {
       void api<Page<ChatMessage>>(`/chat/conversations/${id}/messages?limit=30`)
         .then((page) => {
           if (request.current !== token) return;
+          messagePage.current = {
+            token,
+            id,
+            cursor: page.nextCursor,
+            hasMore: page.hasMore,
+          };
+          setMessageHasMore(page.hasMore);
           replaceMessages(page.items.slice().reverse());
         })
         .catch((err: unknown) => {
@@ -228,6 +293,62 @@ export function Chat() {
       request.current += 1;
     };
   }, [selectedId, loadNonce, detach, replaceMessages, navigate]);
+
+  const loadOlder = useCallback(() => {
+    const page = messagePage.current;
+    const token = page.token;
+    const id = page.id;
+    const cursor = page.cursor;
+    if (!id || !page.hasMore || !cursor || request.current !== token) return;
+    if (olderLock.current === token) return;
+    olderLock.current = token;
+    setOlderError("");
+    void api<Page<ChatMessage>>(
+      `/chat/conversations/${id}/messages?limit=30&cursor=${encodeURIComponent(cursor)}`,
+    )
+      .then((next) => {
+        if (request.current !== token || messagePage.current.token !== token) return;
+        messagePage.current = { token, id, cursor: next.nextCursor, hasMore: next.hasMore };
+        setMessageHasMore(next.hasMore);
+        prependMessages(next.items.slice().reverse());
+      })
+      .catch((err: unknown) => {
+        if (request.current !== token) return;
+        setOlderError(failure(err));
+      })
+      .finally(() => {
+        if (olderLock.current === token) olderLock.current = 0;
+      });
+  }, [prependMessages]);
+
+  const loadMore = useCallback(() => {
+    const paging = historyPaging.current;
+    if (historyLock.current || !paging.hasMore || !paging.cursor) return;
+    historyLock.current = true;
+    setHistoryMoreLoading(true);
+    setHistoryMoreError("");
+    void api<Page<ConversationSummary>>(
+      `/chat/history?limit=20&cursor=${encodeURIComponent(paging.cursor)}`,
+    )
+      .then((page) => {
+        setConversations((prev) => {
+          const known = new Set(prev.map((item) => item.id));
+          const extra = page.items.filter((item) => !known.has(item.id));
+          return extra.length === 0 ? prev : [...prev, ...extra];
+        });
+        historyPaging.current = {
+          cursor: page.nextCursor,
+          hasMore: page.hasMore,
+          depth: historyPaging.current.depth + page.items.length,
+        };
+        setHistoryHasMore(page.hasMore);
+      })
+      .catch((err: unknown) => setHistoryMoreError(failure(err)))
+      .finally(() => {
+        historyLock.current = false;
+        setHistoryMoreLoading(false);
+      });
+  }, []);
 
   function select(id: string) {
     setMenuOpen(false);
@@ -265,6 +386,46 @@ export function Chat() {
     void logout().catch(() => setLogoutError("Could not log out"));
   }
 
+  function askDelete(id: string, button: HTMLButtonElement) {
+    deleteReturn.current = button;
+    setDeleteId(id);
+  }
+
+  function confirmDelete() {
+    if (!deleteId || deleting) return;
+    const id = deleteId;
+    setDeleting(true);
+    void api(`/chat/conversations/${id}`, { method: "DELETE" })
+      .then(() => {
+        setConversations((prev) => prev.filter((item) => item.id !== id));
+        setDeleteId(null);
+        if (id === selectedId) navigate("/");
+      })
+      .catch((err: unknown) => toast(failure(err)))
+      .finally(() => setDeleting(false));
+  }
+
+  function escalate(summary: string) {
+    if (!selectedId) return Promise.reject(new Error("Start a chat first"));
+    return api<ConversationSummary>(`/chat/conversations/${selectedId}/escalate`, {
+      method: "POST",
+      body: { summary },
+    })
+      .then((updated) => {
+        setConversations((prev) =>
+          prev.some((item) => item.id === updated.id)
+            ? prev.map((item) =>
+                item.id === updated.id ? { ...item, escalation: updated.escalation } : item,
+              )
+            : [updated, ...prev],
+        );
+      })
+      .catch((err: unknown) => {
+        toast(failure(err));
+        throw err;
+      });
+  }
+
   const notice =
     stream.notice ?? (loadError ? { tone: "error" as const, message: loadError } : null);
   const showEmpty = Boolean(persona) && !messagesLoading && stream.messages.length === 0 && !notice;
@@ -277,8 +438,13 @@ export function Chat() {
       loading={historyLoading}
       error={historyError}
       logoutError={logoutError}
+      hasMore={historyHasMore}
+      loadingMore={historyMoreLoading}
+      moreError={historyMoreError}
       onNew={startNew}
       onSelect={select}
+      onLoadMore={loadMore}
+      onAskDelete={askDelete}
       onLogout={onLogout}
     />
   );
@@ -302,9 +468,14 @@ export function Chat() {
             loading={historyLoading}
             error={historyError}
             logoutError={logoutError}
+            hasMore={historyHasMore}
+            loadingMore={historyMoreLoading}
+            moreError={historyMoreError}
             menuOffset
             onNew={startNew}
             onSelect={select}
+            onLoadMore={loadMore}
+            onAskDelete={askDelete}
             onLogout={onLogout}
           />
         </SheetContent>
@@ -326,7 +497,7 @@ export function Chat() {
             {persona?.agentName}
           </p>
           {models.length > 0 ? (
-            <div className="relative w-28 shrink sm:w-52">
+            <div className="relative w-16 min-w-0 shrink sm:w-52">
               <select
                 aria-label="Model"
                 value={modelId}
@@ -348,7 +519,25 @@ export function Chat() {
               />
             </div>
           ) : null}
-          <div className="ml-auto shrink-0">
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            <span title={selectedId ? undefined : "Start a chat first"} className="inline-flex">
+              <Button
+                ref={escalateReturn}
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={!selectedId}
+                aria-disabled={escalated || undefined}
+                className={escalated ? "pointer-events-none opacity-50" : undefined}
+                onClick={() => {
+                  if (escalated) return;
+                  setEscalateOpen(true);
+                }}
+              >
+                Escalate
+              </Button>
+            </span>
+            {escalated ? <StatusBadge tone="success">Escalated</StatusBadge> : null}
             <ThemeToggle />
           </div>
         </header>
@@ -362,8 +551,12 @@ export function Chat() {
           streaming={stream.streaming}
           notice={notice}
           showEmpty={showEmpty}
+          conversationKey={selectedId ?? "new"}
+          hasMore={messageHasMore}
+          olderError={olderError}
           onPrompt={send}
-          onRetry={stream.notice ? () => stream.retry(selectedId) : undefined}
+          onLoadOlder={loadOlder}
+          onRetry={canRetry ? () => stream.retry(selectedId) : undefined}
         />
         <div className="mx-auto w-full max-w-[760px] shrink-0 px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
           <Composer
@@ -374,6 +567,21 @@ export function Chat() {
           />
         </div>
       </div>
+      <DeleteDialog
+        open={deleteId !== null}
+        pending={deleting}
+        returnFocus={deleteReturn}
+        onOpenChange={(open) => {
+          if (!open) setDeleteId(null);
+        }}
+        onConfirm={confirmDelete}
+      />
+      <EscalateDialog
+        open={escalateOpen}
+        returnFocus={escalateReturn}
+        onOpenChange={setEscalateOpen}
+        onSubmit={escalate}
+      />
     </div>
   );
 }

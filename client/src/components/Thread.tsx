@@ -1,5 +1,5 @@
 import { CircleAlert } from "lucide-react";
-import { useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import type { ChatMessage } from "@/api";
 import { Callout } from "@/components/Callout";
 import { AssistantMessage, UserMessage } from "@/components/Message";
@@ -19,8 +19,21 @@ type Props = {
   streaming: boolean;
   notice: StreamNotice | null;
   showEmpty: boolean;
+  conversationKey: string;
+  hasMore: boolean;
+  olderError: string;
   onPrompt: (text: string) => void;
+  onLoadOlder: () => void;
   onRetry?: () => void;
+};
+
+type Snapshot = {
+  key: string;
+  count: number;
+  oldest: string;
+  newest: string;
+  top: number;
+  height: number;
 };
 
 function MessageSkeleton() {
@@ -64,29 +77,111 @@ export function Thread({
   streaming,
   notice,
   showEmpty,
+  conversationKey,
+  hasMore,
+  olderError,
   onPrompt,
+  onLoadOlder,
   onRetry,
 }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
-  const pin = useRef(true);
-  const oldestId = messages[0]?.id ?? "";
-  const seen = useRef(oldestId);
-  const lastId = messages[messages.length - 1]?.id;
+  const sentinel = useRef<HTMLDivElement>(null);
+  const stick = useRef(true);
+  const armed = useRef(false);
+  const adjusting = useRef(false);
+  const snapshot = useRef<Snapshot>({
+    key: "",
+    count: 0,
+    oldest: "",
+    newest: "",
+    top: 0,
+    height: 0,
+  });
+  const oldest = messages[0]?.id ?? "";
+  const newest = messages.at(-1)?.id ?? "";
 
   useLayoutEffect(() => {
     const el = scroller.current;
     if (!el) return;
-    if (seen.current !== oldestId) {
-      seen.current = oldestId;
-      pin.current = true;
+    if (snapshot.current.key !== conversationKey) {
+      armed.current = false;
+      snapshot.current = {
+        key: conversationKey,
+        count: 0,
+        oldest: "",
+        newest: "",
+        top: 0,
+        height: el.scrollHeight,
+      };
     }
-    if (pin.current) el.scrollTop = el.scrollHeight;
-  }, [messages, notice, loading, oldestId]);
+    if (loading) return;
+    const base = snapshot.current;
+    const prepended =
+      base.count > 0 &&
+      messages.length > base.count &&
+      newest === base.newest &&
+      oldest !== base.oldest;
+
+    adjusting.current = true;
+    if (prepended) {
+      // Rows were inserted above the viewport. Keep the same lines in view.
+      el.scrollTop = base.top + (el.scrollHeight - base.height);
+    } else if (base.count === 0) {
+      el.scrollTop = el.scrollHeight;
+      armed.current = true;
+    } else if (stick.current) {
+      el.scrollTop = el.scrollHeight;
+    }
+    stick.current = el.scrollHeight - el.scrollTop - el.clientHeight <= STICKY_GAP;
+    adjusting.current = false;
+    snapshot.current = {
+      key: conversationKey,
+      count: messages.length,
+      oldest,
+      newest,
+      top: el.scrollTop,
+      height: el.scrollHeight,
+    };
+  }, [messages, notice, olderError, loading, oldest, newest, conversationKey]);
+
+  useEffect(() => {
+    const el = scroller.current;
+    const content = el?.firstElementChild;
+    if (!el || !(content instanceof HTMLElement)) return;
+    const observer = new ResizeObserver(() => {
+      if (!stick.current || adjusting.current) return;
+      adjusting.current = true;
+      el.scrollTop = el.scrollHeight;
+      adjusting.current = false;
+      snapshot.current.top = el.scrollTop;
+      snapshot.current.height = el.scrollHeight;
+    });
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [conversationKey]);
+
+  useEffect(() => {
+    const root = scroller.current;
+    const target = sentinel.current;
+    if (!root || !target || !hasMore || loading) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!armed.current || adjusting.current || olderError) return;
+        if (root.scrollTop > 120) return;
+        if (entries.some((entry) => entry.isIntersecting)) onLoadOlder();
+      },
+      { root },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [hasMore, loading, conversationKey, olderError, onLoadOlder]);
 
   function onScroll() {
+    if (adjusting.current) return;
     const el = scroller.current;
     if (!el) return;
-    pin.current = el.scrollHeight - el.scrollTop - el.clientHeight <= STICKY_GAP;
+    stick.current = el.scrollHeight - el.scrollTop - el.clientHeight <= STICKY_GAP;
+    snapshot.current.top = el.scrollTop;
   }
 
   return (
@@ -96,7 +191,7 @@ export function Thread({
       aria-label="Messages"
       aria-busy={loading || streaming}
       onScroll={onScroll}
-      className="min-h-0 flex-1 overflow-y-auto"
+      className="min-h-0 flex-1 overflow-y-auto [overflow-anchor:none]"
     >
       <div
         className={
@@ -105,7 +200,9 @@ export function Thread({
             : "mx-auto flex w-full max-w-[760px] flex-col gap-6 px-4 py-6"
         }
       >
+        {hasMore ? <div ref={sentinel} aria-hidden className="h-px w-full shrink-0" /> : null}
         {loading ? <MessageSkeleton /> : null}
+        {olderError ? <StreamError message={olderError} onRetry={onLoadOlder} /> : null}
         {showEmpty ? (
           <div className="flex flex-col items-center gap-4 text-center">
             <h1 className="font-display text-4xl text-foreground">{agentName}</h1>
@@ -136,8 +233,14 @@ export function Thread({
                 key={message.id}
                 name={agentName}
                 content={message.content}
-                pending={streaming && message.id === lastId}
+                incomplete={message.incomplete}
+                pending={streaming && message.id === newest}
                 showCopy={!message.incomplete}
+                onRetry={
+                  onRetry && !streaming && message.incomplete && message.id === newest
+                    ? onRetry
+                    : undefined
+                }
               />
             ),
           )}
@@ -148,6 +251,12 @@ export function Thread({
         ) : null}
         {notice?.tone === "error" ? (
           <StreamError message={notice.message} onRetry={onRetry} />
+        ) : null}
+        {notice?.tone === "stopped" ? (
+          <div className="flex items-center gap-3 text-sm text-muted-foreground">
+            <p>Stopped before a reply</p>
+            {onRetry ? <RetryButton onRetry={onRetry} /> : null}
+          </div>
         ) : null}
       </div>
     </div>
