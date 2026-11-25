@@ -34,6 +34,22 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
+function TypingDots() {
+  return (
+    <span className="mt-2 inline-flex items-center gap-1">
+      <span className="sr-only">Typing</span>
+      {[0, 1, 2].map((dot) => (
+        <span
+          key={dot}
+          aria-hidden
+          className="typing-dot size-1.5 rounded-full bg-muted-foreground"
+          style={{ animationDelay: `${dot * 160}ms` }}
+        />
+      ))}
+    </span>
+  );
+}
+
 function AssistantBody({ content }: { content: string }) {
   return (
     <Markdown
@@ -110,6 +126,7 @@ export function AssistantMessage({
     <article className="min-w-0 text-base leading-relaxed">
       <p className="text-sm text-muted-foreground">{name}</p>
       {content ? <AssistantBody content={content} /> : null}
+      {pending && !content ? <TypingDots /> : null}
       {action ? <div className="mt-2">{action}</div> : null}
     </article>
   );

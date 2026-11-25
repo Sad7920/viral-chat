@@ -90,16 +90,18 @@ export function Sidebar({
           </ul>
         )}
       </div>
-      <div className="flex flex-col items-start gap-1 border-t border-sidebar-border p-3">
-        <p className="w-full truncate text-sm text-muted-foreground">{email}</p>
+      <div className="border-t border-sidebar-border p-3">
+        <div className="flex flex-col items-start gap-1 md:flex-row md:items-center md:gap-2">
+          <p className="w-full min-w-0 truncate text-sm text-muted-foreground md:flex-1">{email}</p>
+          <Button type="button" variant="ghost" size="sm" className="shrink-0" onClick={onLogout}>
+            Log out
+          </Button>
+        </div>
         {logoutError ? (
-          <p role="alert" className="text-sm text-destructive">
+          <p role="alert" className="mt-1 text-sm text-destructive">
             {logoutError}
           </p>
         ) : null}
-        <Button type="button" variant="ghost" size="sm" onClick={onLogout}>
-          Log out
-        </Button>
       </div>
     </div>
   );

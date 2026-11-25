@@ -222,7 +222,7 @@ Models (`server/src/allowlist.js`, separate from the Mongoose models): Nemotron 
 
 ## 11. Frontend
 
-Routes: `/login`, `/signup`, `/` (chat, protected). `GET /auth/me` on load; a 401 means signed out, not an error. No flash of the wrong page while loading.
+Routes: `/login`, `/signup`, `/` (chat, new conversation, protected) and `/c/:conversationId` (chat, existing conversation, protected). The selected conversation is the URL. `GET /auth/me` on load; a 401 means signed out, not an error. No flash of the wrong page while loading.
 
 Layout: sidebar, top bar (company and agent, model select, Escalate, theme toggle), thread, docked composer. Under `md` (768px) the sidebar is a drawer opened from the top bar. Full visual spec in DESIGN.md.
 

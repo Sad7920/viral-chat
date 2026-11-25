@@ -20,6 +20,7 @@ type Props = {
   notice: StreamNotice | null;
   showEmpty: boolean;
   onPrompt: (text: string) => void;
+  onRetry?: () => void;
 };
 
 function MessageSkeleton() {
@@ -35,11 +36,20 @@ function MessageSkeleton() {
   );
 }
 
-function StreamError({ message }: { message: string }) {
+function RetryButton({ onRetry }: { onRetry: () => void }) {
+  return (
+    <Button type="button" variant="secondary" size="sm" onClick={onRetry}>
+      Retry
+    </Button>
+  );
+}
+
+function StreamError({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
     <div role="alert" className="flex items-center gap-3 rounded-card bg-error-tint p-3 text-sm">
       <CircleAlert aria-hidden className="size-4 shrink-0 text-destructive" />
-      <p className="text-foreground">{message}</p>
+      <p className="min-w-0 flex-1 text-foreground">{message}</p>
+      {onRetry ? <RetryButton onRetry={onRetry} /> : null}
     </div>
   );
 }
@@ -55,6 +65,7 @@ export function Thread({
   notice,
   showEmpty,
   onPrompt,
+  onRetry,
 }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const pin = useRef(true);
@@ -130,8 +141,14 @@ export function Thread({
               />
             ),
           )}
-        {notice?.tone === "warning" ? <Callout title={notice.message} /> : null}
-        {notice?.tone === "error" ? <StreamError message={notice.message} /> : null}
+        {notice?.tone === "warning" ? (
+          <Callout title={notice.message}>
+            {onRetry ? <RetryButton onRetry={onRetry} /> : null}
+          </Callout>
+        ) : null}
+        {notice?.tone === "error" ? (
+          <StreamError message={notice.message} onRetry={onRetry} />
+        ) : null}
       </div>
     </div>
   );

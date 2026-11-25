@@ -1,5 +1,7 @@
 import { ChevronDown, Menu } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useMatch, useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import {
   ApiError,
   api,
@@ -61,34 +63,61 @@ function failure(err: unknown) {
   return err instanceof ApiError ? err.message : "Something went wrong";
 }
 
+async function loadHistoryThrough(id: string) {
+  const found: ConversationSummary[] = [];
+  let cursor: string | null = null;
+  const seen = new Set<string>();
+  for (;;) {
+    const query = cursor
+      ? `/chat/history?limit=20&cursor=${encodeURIComponent(cursor)}`
+      : "/chat/history?limit=20";
+    const page: Page<ConversationSummary> = await api(query);
+    found.push(...page.items);
+    if (page.items.some((item) => item.id === id)) return found;
+    if (!page.hasMore || !page.nextCursor || seen.has(page.nextCursor)) return null;
+    seen.add(page.nextCursor);
+    cursor = page.nextCursor;
+  }
+}
+
 export function Chat() {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  const matched = useMatch("/c/:conversationId");
+  const selectedId = matched?.params.conversationId ?? null;
   const [persona, setPersona] = useState<Persona | null>(null);
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [modelId, setModelId] = useState("");
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [historyError, setHistoryError] = useState("");
-  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [messagesLoading, setMessagesLoading] = useState(Boolean(selectedId));
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadNonce, setLoadNonce] = useState(0);
   const [logoutError, setLogoutError] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const request = useRef(0);
+  const createdId = useRef<string | null>(null);
+  const conversationIds = useCallback(() => conversations.map((item) => item.id), [conversations]);
 
-  const onMeta = useCallback((id: string) => {
-    setSelectedId(id);
-    setConversations((prev) => {
-      const existing = prev.find((item) => item.id === id);
-      const row = existing ?? {
-        id,
-        title: "New chat",
-        escalation: null,
-        updatedAt: new Date().toISOString(),
-      };
-      return [row, ...prev.filter((item) => item.id !== id)];
-    });
-  }, []);
+  const onMeta = useCallback(
+    (id: string) => {
+      setConversations((prev) => {
+        const existing = prev.find((item) => item.id === id);
+        const row = existing ?? {
+          id,
+          title: "New chat",
+          escalation: null,
+          updatedAt: new Date().toISOString(),
+        };
+        return [row, ...prev.filter((item) => item.id !== id)];
+      });
+      if (selectedId === id) return;
+      createdId.current = id;
+      navigate(`/c/${id}`, { replace: true });
+    },
+    [navigate, selectedId],
+  );
 
   const onTitle = useCallback((id: string, title: string) => {
     setConversations((prev) => prev.map((item) => (item.id === id ? { ...item, title } : item)));
@@ -104,10 +133,11 @@ export function Chat() {
   }, []);
 
   const handlers = useMemo(
-    () => ({ model: modelId, onMeta, onTitle, refreshHistory }),
-    [modelId, onMeta, onTitle, refreshHistory],
+    () => ({ model: modelId, onMeta, onTitle, refreshHistory, conversationIds }),
+    [modelId, onMeta, onTitle, refreshHistory, conversationIds],
   );
   const stream = useChatStream(handlers);
+  const { detach, replaceMessages } = stream;
 
   useEffect(() => {
     if (persona) document.title = persona.companyName;
@@ -140,38 +170,89 @@ export function Chat() {
     };
   }, []);
 
-  function select(id: string) {
-    if (id === selectedId && (stream.streaming || !loadError)) return;
+  useEffect(() => {
+    if (!selectedId) return;
+    let cancelled = false;
+    void loadHistoryThrough(selectedId)
+      .then((items) => {
+        if (cancelled || !items) return;
+        setConversations((prev) => {
+          if (prev.some((item) => item.id === selectedId)) return prev;
+          const known = new Set(prev.map((item) => item.id));
+          return [...prev, ...items.filter((item) => !known.has(item.id))];
+        });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId]);
+
+  useLayoutEffect(() => {
+    if (selectedId && createdId.current === selectedId) return;
+    createdId.current = null;
     const token = ++request.current;
-    stream.detach();
+    const id = selectedId;
+    detach();
+    // Follow the URL, including Back and Forward, without painting the previous thread.
+    queueMicrotask(() => {
+      if (request.current !== token) return;
+      setLoadError(null);
+      if (!id) {
+        setMessagesLoading(false);
+        replaceMessages([]);
+        return;
+      }
+      setMessagesLoading(true);
+      replaceMessages([]);
+      void api<Page<ChatMessage>>(`/chat/conversations/${id}/messages?limit=30`)
+        .then((page) => {
+          if (request.current !== token) return;
+          replaceMessages(page.items.slice().reverse());
+        })
+        .catch((err: unknown) => {
+          if (request.current !== token) return;
+          replaceMessages([]);
+          if (err instanceof ApiError && err.status === 404) {
+            toast("Conversation not found");
+            navigate("/", { replace: true });
+            return;
+          }
+          setLoadError(failure(err));
+        })
+        .finally(() => {
+          if (request.current === token) setMessagesLoading(false);
+        });
+    });
+    return () => {
+      request.current += 1;
+    };
+  }, [selectedId, loadNonce, detach, replaceMessages, navigate]);
+
+  function select(id: string) {
     setMenuOpen(false);
-    setSelectedId(id);
-    setLoadError(null);
-    setMessagesLoading(true);
-    stream.replaceMessages([]);
-    void api<Page<ChatMessage>>(`/chat/conversations/${id}/messages?limit=30`)
-      .then((page) => {
-        if (request.current !== token) return;
-        stream.replaceMessages(page.items.slice().reverse());
-      })
-      .catch((err: unknown) => {
-        if (request.current !== token) return;
-        stream.replaceMessages([]);
-        setLoadError(failure(err));
-      })
-      .finally(() => {
-        if (request.current === token) setMessagesLoading(false);
-      });
+    if (id === selectedId) {
+      if (loadError) {
+        createdId.current = null;
+        setLoadNonce((nonce) => nonce + 1);
+      }
+      return;
+    }
+    navigate(`/c/${id}`);
   }
 
   function startNew() {
-    request.current += 1;
-    stream.detach();
     setMenuOpen(false);
-    setSelectedId(null);
-    setLoadError(null);
-    setMessagesLoading(false);
-    stream.replaceMessages([]);
+    if (!selectedId) {
+      createdId.current = null;
+      request.current += 1;
+      detach();
+      setLoadError(null);
+      setMessagesLoading(false);
+      replaceMessages([]);
+      return;
+    }
+    navigate("/");
   }
 
   function send(content: string) {
@@ -282,6 +363,7 @@ export function Chat() {
           notice={notice}
           showEmpty={showEmpty}
           onPrompt={send}
+          onRetry={stream.notice ? () => stream.retry(selectedId) : undefined}
         />
         <div className="mx-auto w-full max-w-[760px] shrink-0 px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
           <Composer

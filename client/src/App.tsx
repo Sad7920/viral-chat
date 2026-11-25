@@ -39,13 +39,15 @@ export default function App() {
               }
             />
             <Route
-              path="/"
               element={
                 <Gate mode="user">
                   <Chat />
                 </Gate>
               }
-            />
+            >
+              <Route path="/" element={null} />
+              <Route path="/c/:conversationId" element={null} />
+            </Route>
             {import.meta.env.DEV ? <Route path="/dev/design" element={<DesignPage />} /> : null}
           </Routes>
         </AuthProvider>
