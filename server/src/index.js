@@ -3,6 +3,7 @@ import { defaultModel } from "./allowlist.js";
 import { createApp } from "./app.js";
 import { connectDb } from "./db.js";
 import { parseEnv } from "./env.js";
+import { createOpenRouter } from "./openrouter.js";
 import { Conversation } from "./models/Conversation.js";
 import { Message } from "./models/Message.js";
 import { User } from "./models/User.js";
@@ -15,7 +16,7 @@ try {
   await connectDb(env.MONGODB_URI);
   console.error("connected to MongoDB");
   await Promise.all([User.init(), Conversation.init(), Message.init()]);
-  const app = createApp({ env });
+  const app = createApp({ env, openrouter: createOpenRouter(env) });
   const server = app.listen(env.PORT, () => {
     console.error(`listening on ${env.PORT}`);
   });

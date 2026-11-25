@@ -4,6 +4,7 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 import express from "express";
 import { errorMiddleware } from "./middleware/error.js";
+import { createOpenRouter } from "./openrouter.js";
 import { authRouter } from "./routes/auth.js";
 import { chatRouter } from "./routes/chat.js";
 import { personaRouter } from "./routes/persona.js";
@@ -14,13 +15,13 @@ function isApiPath(pathname) {
   return API_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 }
 
-export function createApp({ env }) {
+export function createApp({ env, openrouter }) {
   const app = express();
   app.use(cors({ origin: env.CLIENT_ORIGIN, credentials: true }));
   app.use(express.json({ limit: "16kb" }));
   app.use(cookieParser());
   app.use("/auth", authRouter(env));
-  app.use("/chat", chatRouter(env));
+  app.use("/chat", chatRouter(env, openrouter ?? createOpenRouter(env)));
   app.use(personaRouter(env));
 
   if (env.NODE_ENV === "production") {
