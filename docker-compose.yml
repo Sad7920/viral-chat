@@ -1,0 +1,46 @@
+services:
+  client:
+    build:
+      context: .
+      target: dev-client
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./client:/app/client
+      # The Mac bind mount must not replace the Linux modules from the image.
+      - /app/client/node_modules
+    environment:
+      VITE_PROXY_TARGET: http://server:4000
+
+  server:
+    build:
+      context: .
+      target: dev-server
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./server:/app/server
+      - /app/server/node_modules
+    env_file:
+      - server/.env.example
+      - path: server/.env
+        required: false
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  mongo:
+    image: mongo:8
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+volumes:
+  mongo-data:
