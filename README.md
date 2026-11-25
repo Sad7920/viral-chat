@@ -154,21 +154,21 @@ Tests never call OpenRouter.
 
 Pull requests run the server, client, and docker jobs. The docker job builds the `prod` target and does not push. A superseded pull request run is cancelled.
 
-A push to `master` runs those same checks. After they pass, `publish` pushes `ghcr.io/sad7920/viral-chat:latest` and `:sha-<short commit>` for `linux/amd64`. `deploy` then runs `railway redeploy`. If `RAILWAY_TOKEN` is missing, deploy logs a notice and still succeeds, so a fork stays green. A master run is not cancelled mid-publish or mid-deploy.
+A push to `master` runs those same checks. After they pass, `publish` pushes `ghcr.io/sad7920/viral-chat:latest` and `:sha-<short commit>` for `linux/amd64`. A master run is not cancelled mid-publish. CI does not call Railway.
 
 ```mermaid
 flowchart LR
   pr[Pull request] --> checks[server, client, docker]
   push[Push to master] --> checks2[server, client, docker]
   checks2 --> publish[Push GHCR image]
-  publish --> deploy[Railway redeploy]
+  publish --> railway[Railway Auto Updates]
 ```
 
 ## Deployment
 
-The running app is the public image `ghcr.io/sad7920/viral-chat:latest` on one Railway service. Railway does not build the Dockerfile. Leave Railway Auto Updates off so only this workflow redeploys the service.
+The running app is the public image `ghcr.io/sad7920/viral-chat:latest` on one Railway service. Railway does not build the Dockerfile. Auto Updates watch `latest` and roll the service forward when the image changes.
 
-Repository secret `RAILWAY_TOKEN`: a Railway project token. Repository variable `RAILWAY_SERVICE_ID`: the service id. The workflow does not log either value.
+**Deploy latency.** Railway caches registry digests, so Auto Updates can take up to a few hours. For an immediate update, click Redeploy on the service in the Railway dashboard. The free-tier service may sleep when idle, so the first request after a pause is slow.
 
 Railway service variables, by name: `MONGODB_URI`, `JWT_SECRET`, `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `CLIENT_ORIGIN`, `NODE_ENV`. `CLIENT_ORIGIN` is `https://viral-chat-production.up.railway.app`. `NODE_ENV` is `production`.
 

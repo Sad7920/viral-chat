@@ -255,7 +255,7 @@ Pure helper functions live in `src/lib/lists.ts` (`upsertById`, `swapId`, `prepe
 
 ## 12. Docker and Colima
 
-One root `Dockerfile` with stages in this order: `dev-client`, `dev-server`, `build-client`, `prod`. `prod` stays last, runs as a non-root user, and installs with `npm ci --omit=dev`. Use Debian slim Node images, not Alpine (bcrypt and mongodb-memory-server need glibc). The published image is built for `linux/amd64` and pushed to GHCR. Railway pulls that image. It does not build this Dockerfile.
+One root `Dockerfile` with stages in this order: `dev-client`, `dev-server`, `build-client`, `prod`. `prod` stays last, runs as a non-root user, and installs with `npm ci --omit=dev`. Use Debian slim Node images, not Alpine (bcrypt and mongodb-memory-server need glibc). The published image is built for `linux/amd64` and pushed to GHCR on a push to `master`. Railway does not build this Dockerfile. Railway Auto Updates watch the `latest` tag and pull the new image, with a delay of up to a few hours because Railway caches registry digests. A manual Redeploy in the Railway dashboard applies it immediately. Rollback means setting the service image to an older `sha-<short>` tag.
 
 Compose services: `client` (Vite, 5173), `server` (4000), `mongo` (27017, named volume, healthcheck). `server` depends on `mongo` with `service_healthy`. Anonymous volumes over `/app/client/node_modules` and `/app/server/node_modules` so a Mac bind mount doesn't clobber Linux modules. Vite uses `server.host: true` and `server.watch.usePolling: true`. No host network mode.
 
@@ -283,10 +283,10 @@ Client (Vitest, pure functions only, no DOM): the SSE parser and `lists.ts`.
 - Prettier config at the repo root (`semi`, double quotes, `trailingComma: "all"`, `printWidth: 100`). ESLint flat config in each package with `eslint-config-prettier`.
 - Scripts in both packages: `lint`, `format`, `format:check`. Client also `typecheck` (`tsc -b`) and `test` (`vitest run`). Server has `test` (`node --test`).
 - `.nvmrc` at the repo root holds the Node major. The Dockerfile and CI use the same major.
-- `.github/workflows/ci.yml` runs on pull requests and on pushes to `master`. Workflow permissions are `contents: read`. Concurrency cancels a superseded pull request run. A master run does not cancel an in-progress publish or deploy.
+- `.github/workflows/ci.yml` runs on pull requests and on pushes to `master`. Workflow permissions are `contents: read`. Concurrency cancels a superseded pull request run. A master run does not cancel an in-progress publish.
 - Every run has three check jobs: server (lint, format check, test, with the mongodb-memory-server binary cached), client (lint, typecheck, format check, test, build), docker (build the `prod` target, no push).
-- A push to `master`, after those three pass, runs `publish` then `deploy`. `publish` logs in to ghcr.io with `GITHUB_TOKEN`, builds the `prod` target for `linux/amd64`, and pushes `ghcr.io/<owner>/<repo>:latest` and `:sha-<short>`. The image name is lowercased. The label `org.opencontainers.image.source` is this repository. `deploy` runs `railway redeploy` with the project token. If `RAILWAY_TOKEN` is unset, that job logs a notice and succeeds. Nothing is pushed to GHCR on a pull request.
-- Official actions are pinned to their current major versions. The Railway CLI is pinned to 5.4.2, the release that accepts a project token in CI after 5.3.0 rejected it.
+- A push to `master`, after those three pass, runs `publish`. It logs in to ghcr.io with `GITHUB_TOKEN`, builds the `prod` target for `linux/amd64`, and pushes `ghcr.io/<owner>/<repo>:latest` and `:sha-<short>`. The image name is lowercased. The label `org.opencontainers.image.source` is this repository. Nothing is pushed to GHCR on a pull request. Railway Auto Updates pull `latest` (delay of up to a few hours). A manual Redeploy in the Railway dashboard applies the image immediately.
+- Official actions are pinned to their current major versions.
 
 ## 15. Seed script (development only)
 
@@ -294,7 +294,7 @@ Client (Vitest, pure functions only, no DOM): the SSE parser and `lists.ts`.
 
 ## 16. Deployment
 
-Production is one Railway web service pulling the public image `ghcr.io/<owner>/<repo>:latest`. GitHub Actions builds that image on every push to `master` and then runs `railway redeploy`. Railway does not build the Dockerfile. Railway Auto Updates stay off, so a cached registry watch cannot start a second deploy. `RAILWAY_TOKEN` is a repository secret (a project token). `RAILWAY_SERVICE_ID` is a repository variable. Roll back by pointing the service image at an older `sha-<short>` tag.
+Production is one Railway web service pulling the public image `ghcr.io/<owner>/<repo>:latest`. Pull requests run the checks. A push to `master` builds that image and pushes it to GHCR. Railway does not build the Dockerfile, and CI does not call Railway. Railway Auto Updates watch `latest` and redeploy when the digest changes, with a delay of up to a few hours because Railway caches registry digests. A manual Redeploy in the Railway dashboard applies the new image immediately. Rollback means setting the service image tag to an older `sha-<short>` tag.
 
 Railway variable names: MONGODB_URI, JWT_SECRET, OPENROUTER_API_KEY, OPENROUTER_MODEL, CLIENT_ORIGIN (the public Railway URL), NODE_ENV=production.
 
