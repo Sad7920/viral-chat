@@ -1,0 +1,19 @@
+---
+description: UI design system rules
+globs: ["client/src/**/*.tsx", "client/src/**/*.css", "client/index.html"]
+alwaysApply: false
+---
+
+All UI follows `docs/design/DESIGN.md` and the tokens in `client/src/index.css`. Read DESIGN.md before writing or editing any UI.
+
+- Use semantic token classes only (`bg-card`, `text-muted-foreground`, `border-border`). No hex values, no arbitrary color values, no raw palette classes.
+- Buttons are pills (`rounded-full`). There is exactly one filled blue control per view (Send, which becomes Stop while streaming, in chat; submit on auth pages). Other actions are secondary or ghost.
+- Inter at weights 400 and 500 only. `font-display` (serif 300) only for headings of 22px and up. Mono only for code and `label-mono`.
+- Status is a StatusBadge (dot plus text). "Not an error" states use the amber Callout. Failures use the error row. Never color alone.
+- Toasts (Sonner) are for short, non-blocking feedback only. Stream errors and failed pages are always inline.
+- Loading states use the Skeleton component, not spinners.
+- Every interactive element has the standard focus ring. Every icon-only button has an `aria-label`.
+- Build UI from the shared components (Button, Input, Textarea, Label, Card, Dialog, Sheet, Skeleton, Toaster, StatusBadge, Callout, UserMessage, AssistantMessage, ThemeToggle). Do not add shadcn components that DESIGN.md does not list.
+- Theme is light or dark only, via `useTheme()`. No background changer, no gradients.
+- Support both themes. Check every screen in light and dark, and at 375px and 1280px.
+- Do not add colors, fonts, gradients, shadows or radii. If something is missing, stop and propose a token.

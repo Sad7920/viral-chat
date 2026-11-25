@@ -1,0 +1,26 @@
+---
+description: Lumen Ledger support chat. Workflow and quality bar
+alwaysApply: true
+---
+
+# How we work
+
+- This repo is built milestone by milestone (M0 to M9). Do exactly the milestone I paste. Do not start, scaffold or stub the next one.
+- Sources of truth: `docs/SPEC.md` (behavior, API, data, tooling) and `docs/design/DESIGN.md` (all UI). Read both before each milestone. If a milestone prompt disagrees with either file, stop and tell me before building.
+- Start each milestone with a plan of at most 10 lines (files you will create or change). Then build. Only pause to ask if something is ambiguous or you think the plan is wrong. Never silently pick a different approach.
+- At the end of each milestone: run every command in its "Verify" list and paste the real output, list every file created or changed in one line each, state any deviation, commit on branch `rebuild/v2` as `feat(mN): ...`, then STOP and wait for my approval. Do not push unless I ask.
+
+# Quality bar
+
+- Minimal code. I must be able to explain every file in two minutes. Prefer plain, readable solutions over abstractions. No layers, helpers or patterns the spec doesn't call for. Aim for under about 150 lines per file.
+- No dead code, no commented-out code, no TODOs, no placeholder functions, no `console.log` in the client. The server logs boot and errors only (`console.error`).
+- Comments only where the "why" isn't obvious.
+- Dependencies: install only what the milestone names. Check the package name and latest stable version on npm before installing. Ask before adding anything else. Current Node LTS (the major in `.nvmrc`), ESM on the server, Express v5.
+- Client TypeScript is strict. No `any`, no `@ts-ignore`, no non-null `!` assertions unless a comment explains why. API response types live in `src/api.ts`. The server stays plain JavaScript.
+- ESLint and Prettier run clean in both packages. Run `lint`, `format:check` and `test` (plus `typecheck` on the client) before every commit. CI must be green.
+- Validate every request body, query and param with zod. Ownership checks live inside the query (`userId` in the filter), never after the fact. Errors return `{ error }` and never a stack trace.
+- Never open, print, move or delete any `.env*` file other than `.env.example`. No secrets in code, logs, tests or commits.
+- Free-tier model quota is tiny (about 20 requests/min, 50/day). Tests never call OpenRouter. Live calls happen only when a milestone says so, never more than its stated limit, and I am told before each one.
+- Every server milestone ships its own tests with `node:test`. Client logic that is pure (SSE parser, list helpers) ships with Vitest tests in the milestone that adds it.
+- The app must run with `docker compose up` on macOS with Colima at the end of every milestone, not just at the end of the project.
+- Pin GitHub Actions to their current major versions. Look the versions up; do not guess.
