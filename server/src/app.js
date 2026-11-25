@@ -5,6 +5,8 @@ import cors from "cors";
 import express from "express";
 import { errorMiddleware } from "./middleware/error.js";
 import { authRouter } from "./routes/auth.js";
+import { chatRouter } from "./routes/chat.js";
+import { personaRouter } from "./routes/persona.js";
 
 const API_PREFIXES = ["/auth", "/chat", "/persona", "/models"];
 
@@ -18,6 +20,8 @@ export function createApp({ env }) {
   app.use(express.json({ limit: "16kb" }));
   app.use(cookieParser());
   app.use("/auth", authRouter(env));
+  app.use("/chat", chatRouter(env));
+  app.use(personaRouter(env));
 
   if (env.NODE_ENV === "production") {
     const dist = fileURLToPath(new URL("../../client/dist", import.meta.url));

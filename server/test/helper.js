@@ -2,7 +2,10 @@ import { once } from "node:events";
 import { createServer } from "node:http";
 import { MongoMemoryServer } from "mongodb-memory-server";
 import mongoose from "mongoose";
+import { models } from "../src/allowlist.js";
 import { createApp } from "../src/app.js";
+import { Conversation } from "../src/models/Conversation.js";
+import { Message } from "../src/models/Message.js";
 import { User } from "../src/models/User.js";
 
 async function closeServer(server) {
@@ -30,20 +33,25 @@ export async function listen(env) {
   };
 }
 
+export function testEnv(overrides = {}) {
+  return {
+    NODE_ENV: "test",
+    PORT: 4000,
+    MONGODB_URI: "mongodb://127.0.0.1:27017/unused",
+    JWT_SECRET: "x".repeat(32),
+    OPENROUTER_API_KEY: "test-key",
+    OPENROUTER_MODEL: models[0].id,
+    CLIENT_ORIGIN: "http://localhost:5173",
+    ...overrides,
+  };
+}
+
 export async function startApp() {
   const mongo = await MongoMemoryServer.create();
   const uri = mongo.getUri();
   await mongoose.connect(uri);
-  await User.init();
-  const env = {
-    NODE_ENV: "test",
-    PORT: 4000,
-    MONGODB_URI: uri,
-    JWT_SECRET: "x".repeat(32),
-    OPENROUTER_API_KEY: "test-key",
-    OPENROUTER_MODEL: "placeholder/model",
-    CLIENT_ORIGIN: "http://localhost:5173",
-  };
+  await Promise.all([User.init(), Conversation.init(), Message.init()]);
+  const env = testEnv({ MONGODB_URI: uri });
   const server = await listen(env);
   return {
     env,

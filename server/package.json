@@ -9,9 +9,10 @@
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
     "test": "node --test",
+    "seed": "node scripts/seed.js",
     "lint": "eslint .",
-    "format": "prettier --write src test eslint.config.js package.json",
-    "format:check": "prettier --check src test eslint.config.js package.json"
+    "format": "prettier --write src test scripts eslint.config.js package.json",
+    "format:check": "prettier --check src test scripts eslint.config.js package.json"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
