@@ -21,11 +21,11 @@ export default defineConfig([
     },
   },
   {
-    files: ["src/components/ui/button.tsx", "src/components/ThemeProvider.tsx"],
+    files: ["src/components/ui/button.tsx", "src/components/ThemeProvider.tsx", "src/auth.tsx"],
     rules: {
       "react-refresh/only-export-components": [
         "error",
-        { allowConstantExport: true, allowExportNames: ["buttonVariants", "useTheme"] },
+        { allowConstantExport: true, allowExportNames: ["buttonVariants", "useTheme", "useAuth"] },
       ],
     },
   },

@@ -1,8 +1,10 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import cookieParser from "cookie-parser";
+import cors from "cors";
 import express from "express";
 import { errorMiddleware } from "./middleware/error.js";
+import { authRouter } from "./routes/auth.js";
 
 const API_PREFIXES = ["/auth", "/chat", "/persona", "/models"];
 
@@ -12,8 +14,10 @@ function isApiPath(pathname) {
 
 export function createApp({ env }) {
   const app = express();
+  app.use(cors({ origin: env.CLIENT_ORIGIN, credentials: true }));
   app.use(express.json({ limit: "16kb" }));
   app.use(cookieParser());
+  app.use("/auth", authRouter(env));
 
   if (env.NODE_ENV === "production") {
     const dist = fileURLToPath(new URL("../../client/dist", import.meta.url));
