@@ -1,6 +1,7 @@
 import { Check, Copy } from "lucide-react";
 import { useEffect, useState } from "react";
 import Markdown from "react-markdown";
+import { toast } from "sonner";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 
@@ -18,7 +19,10 @@ function CopyButton({ text }: { text: string }) {
 
   function onCopy() {
     void navigator.clipboard.writeText(text).then(
-      () => setCopied(true),
+      () => {
+        setCopied(true);
+        toast("Copied");
+      },
       () => undefined,
     );
   }
@@ -76,7 +80,7 @@ function AssistantBody({ content }: { content: string }) {
 export function UserMessage({ content }: { content: string }) {
   return (
     <div className="flex justify-end">
-      <p className="max-w-[80%] rounded-bubble bg-bubble-user px-4 py-2.5 text-bubble-user-foreground dark:border dark:border-border-strong">
+      <p className="max-w-[80%] rounded-bubble bg-bubble-user px-4 py-2.5 break-words whitespace-pre-wrap text-bubble-user-foreground dark:border dark:border-border-strong">
         {content}
       </p>
     </div>
@@ -87,22 +91,26 @@ export function AssistantMessage({
   name,
   content,
   incomplete = false,
+  pending = false,
+  showCopy = true,
 }: {
   name: string;
   content: string;
   incomplete?: boolean;
+  pending?: boolean;
+  showCopy?: boolean;
 }) {
+  const action = pending ? null : incomplete ? (
+    <StatusBadge tone="warning">Incomplete</StatusBadge>
+  ) : showCopy && content ? (
+    <CopyButton text={content} />
+  ) : null;
+
   return (
-    <article className="text-base leading-relaxed">
+    <article className="min-w-0 text-base leading-relaxed">
       <p className="text-sm text-muted-foreground">{name}</p>
-      <AssistantBody content={content} />
-      <div className="mt-2">
-        {incomplete ? (
-          <StatusBadge tone="warning">Incomplete</StatusBadge>
-        ) : (
-          <CopyButton text={content} />
-        )}
-      </div>
+      {content ? <AssistantBody content={content} /> : null}
+      {action ? <div className="mt-2">{action}</div> : null}
     </article>
   );
 }

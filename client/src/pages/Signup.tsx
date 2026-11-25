@@ -1,6 +1,6 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { ApiError } from "@/api";
+import { ApiError, api, type Persona } from "@/api";
 import { useAuth } from "@/auth";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -13,6 +13,21 @@ export function Signup() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
+  const [companyName, setCompanyName] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    api<Persona>("/persona")
+      .then((persona) => {
+        if (cancelled) return;
+        setCompanyName(persona.companyName);
+        document.title = persona.companyName;
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -30,7 +45,10 @@ export function Signup() {
   return (
     <main className="flex min-h-dvh items-center justify-center bg-background px-4">
       <Card className="flex w-full max-w-sm flex-col gap-6 p-4">
-        <h1 className="font-display text-3xl text-foreground">Create account</h1>
+        <div className="flex flex-col gap-2">
+          {companyName ? <p className="label-mono text-muted-foreground">{companyName}</p> : null}
+          <h1 className="font-display text-3xl text-foreground">Create account</h1>
+        </div>
         <form className="flex flex-col gap-4" onSubmit={(event) => void onSubmit(event)}>
           <div className="flex flex-col gap-2">
             <Label htmlFor="email">Email</Label>

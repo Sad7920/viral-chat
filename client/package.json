@@ -13,7 +13,7 @@
     "lint": "eslint .",
     "format": "prettier --write src index.html vite.config.ts eslint.config.js tsconfig.json tsconfig.app.json tsconfig.node.json package.json",
     "format:check": "prettier --check src index.html vite.config.ts eslint.config.js tsconfig.json tsconfig.app.json tsconfig.node.json package.json",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run"
   },
   "dependencies": {
     "@fontsource/inter": "^5.3.0",
